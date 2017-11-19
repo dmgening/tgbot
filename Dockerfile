@@ -5,4 +5,4 @@ WORKDIR /app
 
 RUN pip install -e .
 
-CMD governertgbot --help
+CMD tgbot.cli --help

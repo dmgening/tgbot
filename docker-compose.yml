@@ -1,10 +1,10 @@
 version: "3"
 services:
   redis:
-    image: redis
+    image: redis:alpine
   tgbot:
     build: .
-    command: governertgbot run --token "478146475:AAGHBTMpOr8ErBp7xduSZjuLwKP5cYmox7w"
+    command: tgbot.cli run --token "478146475:AAGHBTMpOr8ErBp7xduSZjuLwKP5cYmox7w"
     volumes:
       - .:/app
     links:

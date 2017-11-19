@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name="governertgbot",
+    name="tgbot",
     version="1.0.0",
     py_modules="tgbot",
     install_requires=[

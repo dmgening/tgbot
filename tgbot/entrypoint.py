@@ -11,8 +11,9 @@ from redis import StrictRedis
 from .bot import main_loop
 from .helpers import RuntimeConfig
 from .google import (_get_sheet_revision, _get_sheet_ranges,
-                     _oauth2_create_auth_request, _oauth2_create_session,
-                     _oauth2_get_session)
+                     _update_redis_sheet, _oauth2_create_auth_request,
+                     _oauth2_redeem_token, _oauth2_session_from_runtime,
+                     _google_api_request)
 
 
 success = partial(click.secho, fg='green')
@@ -27,7 +28,6 @@ error = partial(click.secho, fg='red')
               show_default=True, help='Redis database')
 @click.pass_context
 def cli(ctx, redis, redis_db):
-
     ctx.obj['redis'] = StrictRedis.from_url(redis, db=redis_db)
     ctx.obj['runtime'] = RuntimeConfig(ctx.obj['redis'], 'runtime_config')
     ctx.call_on_close(ctx.obj['runtime'].save)
@@ -47,15 +47,15 @@ def config(ctx, print_config):
             warning(f'Missing! {warning_message}')
 
     click.echo('Runtime config sanity check:')
-    oauth_ok = 'google-oauth' in ctx.obj['runtime']
+    oauth_ok = 'oauth' in ctx.obj['runtime']
     _echo_ok('Google OAuth2 Token', oauth_ok, 'Google API is unavialiable.')
-    spreadsheet_ok = 'spreadsheet' in ctx.obj['runtime']
+    spreadsheet_ok = 'sheet-id' in ctx.obj['runtime']
     _echo_ok('Google Spreadsheet ID', spreadsheet_ok, 'Background updates are unavailiable.')
     admin_token_ok = 'admin_token' in ctx.obj['runtime']
     _echo_ok('Admin token', admin_token_ok, 'Managment commands are unaviliable.')
 
     if print_config:
-        click.echo(f'Config dump: {pprint.pformat(ctx.obj["runtime"])}')
+        click.echo(f'Runtime config dump:\n{pprint.pformat(ctx.obj["runtime"])}')
 
 
 @cli.command(help="Run Telegram bot")
@@ -107,9 +107,12 @@ def oauth(ctx, secret_file):
                + click.style(url, fg='blue'))
     code = click.prompt('Enter authorisation code from browser')
 
-    session_dump = _oauth2_create_session(secret, session, code)
+    session_dump = _oauth2_redeem_token(secret, session, code)
     if session_dump is None:
         ctx.fail('Failed to authorize user')
+
+    whoami = _google_api_request(session, 'https://www.googleapis.com/oauth2/v1/userinfo')
+    click.echo(f'Authorized as {whoami["name"]} ({whoami["id"]})')
 
     ctx.obj['runtime']['oauth'] = session_dump
     success('Success')
@@ -118,48 +121,47 @@ def oauth(ctx, secret_file):
 def _process_sheet_uri(ctx, name, value):
     """ Retieve file id from spreadsheet url
     """
-    if value is none:
-        if 'sheet' not in ctx.obj['runtime']:
-            raise click.BadParameter('required field')
-        return ctx.obj['runtime']['sheet']
+    if value is None:
+        if 'sheet-id' not in ctx.obj['runtime']:
+            raise click.BadParameter('Required field')
+        return ctx.obj['runtime']['sheet-id']
 
-    path = urllib.split(value).path
+    path = urllib.parse.urlsplit(value).path
     if not path.startswith('/spreadsheets/d/'):
-        raise click.badparameter('invalid uri for google sheet')
+        raise click.BadParameter('Invalid URI for Google sheet')
 
     sheet_id = path.split('/')[3]
     return sheet_id
 
 
-@adm.command(help="Force update snapshot of google spreadsheet")
-@click.option('--sheet-uri', '-s', default=_process_sheet_uri,
-              help="ID for Google Sheets")
+@adm.command(help='Update snapshot of google spreadsheet')
+@click.argument('sheet', callback=_process_sheet_uri, required=False)
+@click.option('--force', '-f', is_flag=True, default=False,
+              help='Force update even if file revesion not changes')
 @click.pass_context
-def fetch(ctx, sheet_uri):
-    session = _oauth2_session_from_config(ctx.obj['runtime'])
+def fetch(ctx, sheet, force):
+    session = _oauth2_session_from_runtime(ctx.obj['runtime'])
+    if session is None:
+        ctx.fail('Failed to create OAuth2 session. Not authorized?')
 
-    try:
-        credentials = _oauth_get_credentials(ctx.obj['runtime'])
-        db = _fetch_spreadsheet(credentials, spreadsheet)
-    except ValueError as err:
-        error(str(err))
-        ctx.exit()
-    if not db:
-        warning('Retrieved empty list from spreadsheets')
-        ctx.exit()
+    cur_rev = _get_sheet_revision(session, sheet)
 
-    if spreadsheet != ctx.obj['runtime']['spreadsheet']:
-        ctx.obj['runtime']['spreadsheet'] = spreadsheet
-        ctx.obj['redis'].set('runtime_config', json.dumps(ctx.obj['runtime']))
+    if not force:
+        saved_rev = ctx.obj['runtime'].get('sheet-rev')
+        saved_sheet = ctx.obj['runtime'].get('sheet-id')
+        if saved_rev == cur_rev and saved_sheet == sheet:
+            success('Skipping update after revision check')
+            ctx.exit()
 
-    max_row_id = ctx.obj['redis'].hlen('spreadsheet_db')
-    with ctx.obj['redis'].pipeline() as transaction:
-        # Remove extra rows
-        redundant_keys = [str(row_id) for row_id in range(len(db), max_row_id)]
-        if redundant_keys:
-            transaction.hdel('spreadsheet', *redundant_keys)
-        # Replace remaining with new data
-        transaction.hmset('spreadsheet', dict(enumerate(map(json.dumps, db))))
-        transaction.execute()
+    sheet_db = _get_sheet_ranges(session, sheet)
+
+    if not sheet_db:
+        ctx.fail('Retrieved empty range from sheet')
+
+    _update_redis_sheet(ctx.obj['redis'], sheet_db)
+
+    ctx.obj['runtime']['sheet-id'] = sheet
+    ctx.obj['runtime']['sheet-rev'] = cur_rev
+
 
 cli(obj={})

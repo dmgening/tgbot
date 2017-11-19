@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 class TGBot(Bot):
-    def __init__(self, *args, redis=None, msgqueue=None, **kwargs):
+    def __init__(self, *args, redis=None, msg_queue=None, **kwargs):
         super(TGBot, self).__init__(*args, **kwargs)
         self._redis_client = redis
-        self._message_queue = mqueue
+        self._message_queue = msg_queue
 
     @property
     def redis(self):
@@ -38,9 +38,12 @@ def main_loop(token, redis):
         * Connect message handlers
         * Run main loop
     """
-    logger.info('Creating Telegramm bot')
-    msgqueue = messagequeue.MessageQueue()
-    updater = Updater(bot=TGBot(token, redis=redis, msgqueue=msqqueue))
+    logger.info('Creating Telegram bot')
+    import ipdb; ipdb.set_trace()
+
+    msg_queue = messagequeue.MessageQueue()
+    updater = Updater(bot=TGBot(token, redis=redis, msg_queue=msg_queue))
+
 
     logger.debug('Attaching conversation handler')
     updater.dispatcher.add_handler(ConversationHandler(
@@ -56,6 +59,6 @@ def main_loop(token, redis):
 
     logger.debug('Attaching managment handlers')
 
-    logger.info('Telegramm bot started')
+    logger.info('Telegram bot started')
     updater.start_polling()
     updater.idle()
