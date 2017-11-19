@@ -39,7 +39,6 @@ def main_loop(token, redis):
         * Run main loop
     """
     logger.info('Creating Telegram bot')
-    import ipdb; ipdb.set_trace()
 
     msg_queue = messagequeue.MessageQueue()
     updater = Updater(bot=TGBot(token, redis=redis, msg_queue=msg_queue))

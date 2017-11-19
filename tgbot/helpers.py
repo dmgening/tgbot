@@ -62,12 +62,13 @@ def _send_replies_batch(message, replies, **kwargs):
         message.reply_text(reply, **kwargs)
 
 
-def _send_yes_only_keyboard(message, reply, button):
+def _send_yes_only_keyboard(message, reply, button, **kwargs):
     """ Send simple keyboard with one button
     """
-    message.reply_text(reply, reply_markup=InlineKeyboardMarkup(
-        [[InlineKeyboardButton(button, callback_data='yep')]]
-    ))
+    markup = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(button, callback_data='yep')]],
+    )
+    _send_replies_batch(message, (reply, ), reply_markup=markup, **kwargs)
 
 
 def _update_callback_message(message, bot, reply):
@@ -79,7 +80,7 @@ def _update_callback_message(message, bot, reply):
                           message_id=message.message_id)
 
 
-def _send_numbers_keyboard(message, reply):
+def _send_numbers_keyboard(message, reply, **kwargs):
     """ Create inline keyboard for random number entry
     """
     meaningless = list(range(100))
@@ -89,18 +90,4 @@ def _send_numbers_keyboard(message, reply):
             for n in meaningless[offset:offset+NUMBERS_IN_ROW]]
             for offset in range(0, NUMBERS_IN_KEYBOARD, NUMBERS_IN_ROW)]
     )
-    message.reply_text(reply, reply_markup=markup)
-
-
-def _send_governer_reply(message, redis):
-    """ Fetch random row from redis db and send it as result
-    """
-    max_id = redis.hlen('spreadsheet') - 1
-    row = json.loads(redis.hget('spreadsheet', randint(0, max_id)))
-
-    city, site, governer = row[:3]
-    reply = f'Город: {city}.\nСайт: {site}.\nГубернатор: {governer}.'
-    if len(row) > 3:
-        reply += f'\nПромо: {row[3]}'
-
-    _send_yes_only_keyboard(message, reply, 'Еще разок?')
+    _send_replies_batch(message, (reply, ), reply_markup=markup, **kwargs)

@@ -66,7 +66,7 @@ def run(ctx, token):
     ctx.invoke(config)
 
     level_delta = -2
-    logformat = '%(asctime)s [%(levelname)s](%(module)s:%(lineno)d)\t%(message)s'
+    logformat = '%(asctime)s [%(levelname)s](%(module)s:%(lineno)d)\n\t%(message)s'
     logging.basicConfig(format=logformat, level=logging.INFO + level_delta * 10)
 
     main_loop(token, ctx.obj['redis'])
