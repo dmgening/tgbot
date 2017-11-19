@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name="governertgbot",
     version="1.0.0",
-    py_modules="governertgbot",
+    py_modules="tgbot",
     install_requires=[
         'python-telegram-bot',
         # 'google-api-python-client',
@@ -17,6 +17,6 @@ setup(
     ],
     entry_points='''
     [console_scripts]
-    governertgbot=governertgbot.entrypoint:cli
+    tgbot.cli=tgbot.entrypoint:cli
     '''
 )
