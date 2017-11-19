@@ -1,0 +1,11 @@
+version: "3"
+services:
+  redis:
+    image: redis
+  tgbot:
+    build: .
+    command: governertgbot run --token "478146475:AAGHBTMpOr8ErBp7xduSZjuLwKP5cYmox7w"
+    volumes:
+      - .:/app
+    links:
+      - redis
