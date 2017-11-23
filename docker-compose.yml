@@ -4,7 +4,7 @@ services:
     image: redis:alpine
   tgbot:
     build: .
-    command: tgbot.cli run --token "478146475:AAGHBTMpOr8ErBp7xduSZjuLwKP5cYmox7w"
+    command: python -m tgbot.entrypoint run --token ${TG_TOKEN}
     volumes:
       - .:/app
     links:
