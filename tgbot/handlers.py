@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 import json
 from random import randint
 
@@ -9,7 +10,17 @@ from .helpers import (_send_replies_batch, _send_yes_only_keyboard,
 #
 # States & const
 #
-GET_FIRST_NUMBER, GET_SECOND_NUMBER, SEND_GOVERNER, RETRY, COOLDOWN = range(5)
+WELCOME, PAGE_CHOISE, LINE_CHOISE, SEND_BOOK_QUOTE = range(4)
+
+
+def _validate_int(value, min_val, max_val):
+    try:
+        value = int(value)
+    except:
+        return False
+    if value > 2000 or value < 0:
+        return False
+    return True
 
 
 #
@@ -17,82 +28,100 @@ GET_FIRST_NUMBER, GET_SECOND_NUMBER, SEND_GOVERNER, RETRY, COOLDOWN = range(5)
 #
 
 def start_handler(bot, update):
-    """ Initial state for a bot. Greet person, skip preroll handler for firsttimers
-    """
-    reply = ("Привет! Я прототип бота отдающий случайный ответ из гугл таблиц. \n"
-             "Я могу в inline клавиатуры, редактрование сообщений и rich text \n"
-             "*Как-то* _вот_ `так`. [Моя БД](https://docs.google.com/spreadsheets/d"
-             "/1du6quNJ-_IrHO44b5eAtrdDk1m6ig_Kq4stCWsZ9ric/edit)")
-    _send_yes_only_keyboard(update.message, reply, 'Посмотришь как работаю?',
+    reply = ("Бомборобот — усовершенствованная модель гадателя на книгах.\n"
+             "Благодаря сложным внутренним алгоритмам, блокчейн-магии и "
+             "рандомному бигдатору, Бомборобот не реагирует на погоду, "
+             "магнитные бури, ретроградный меркурий и методику Илоны "
+             "Давыдовой. \nВерсия 2.0 содержит более мощный заряд на долгое"
+             " хранение овощей и встроенный антихайп.")
+    _send_yes_only_keyboard(update.message, reply, 'ВСЕ ЯСНО',
                             parse_mode='markdown')
-    return GET_FIRST_NUMBER
+    return WELCOME
 
 
-def preroll_handler(bot, update):
-    """ Step one: Ask user nicely to begin
-    """
-    message = update.callback_query.message
-    _update_callback_message(message, bot, "")
-    _send_yes_only_keyboard(message, 'Готов выбрать губернатора?', 'Да!')
-    return GET_FIRST_NUMBER
+def welcome_handler(bot, update):
+    if hasattr(update, 'callback_query'):
+        message = update.callback_query.message
+        _update_callback_message(message, bot, "")
+    else:
+        message = update.message
+
+    message_text = ("Бомборобот гадает по неопределенному множеству книг.\n"
+                    "Выберите страницу:")
+    _send_replies_batch(message, [message_text, ])
+    return PAGE_CHOISE
 
 
-def get_first_number(bot, update):
-    """ Step two: Ask for first number
-    """
-    message = update.callback_query.message
-    _update_callback_message(message, bot, f"\n\nПосле выбора мы обновляем сообщение убирая клавиатуру")
-    _send_replies_batch(message, ["Тут может оставаться flavor", ])
-    _send_numbers_keyboard(message, "Выбирай число!")
-    return GET_SECOND_NUMBER
+def page_choise_invalid(bot, update):
+    message_text = "Выбери номер страницы от 1 до 2000"
+    _send_replies_batch(update.message, [message_text, ])
+    return PAGE_CHOISE
 
 
-def get_second_number(bot, update):
-    """ Step three: Same as two but with flavor!
-    """
-    message = update.callback_query.message
-    callback_data = update.callback_query.data
-    _update_callback_message(message, bot, f"\n\nМожно использовать пользовательские данные: {callback_data}")
-    _send_numbers_keyboard(message, "Выбирай второе число!")
-    return SEND_GOVERNER
+def page_choise(bot, update):
+    if not _validate_int(update.message.text, 0, 2000):
+        return page_choise_invalid(bot, update)
+
+    message_text = "А теперь выбирайте строку:"
+    _send_replies_batch(update.message, [message_text, ])
+    return LINE_CHOISE
 
 
-def send_governer(bot, update):
+def line_choise_invalid(bot, update):
+    message_text = "Выбери строчку от 1 до 200"
+    _send_replies_batch(update.message, [message_text, ])
+    return LINE_CHOISE
+
+
+def line_choise(bot, update):
+    if not _validate_int(update.message.text, 0, 200):
+        return line_choise_invalid(bot, update)
+    return send_book_quote(bot, update)
+
+
+def send_book_quote(bot, update):
     """ Step four: send reply from cached google table, and go to the beginig
     """
-    message = update.callback_query.message
-    callback_data = update.callback_query.data
-    _update_callback_message(message, bot, f"")
-    _send_replies_batch(message, ["Или мы можем просто убирать клавиатуру", ])
     try:
         max_id = bot.redis.hlen('sheet') - 1
         row = json.loads(bot.redis.hget('sheet', randint(0, max_id)))
-        header = ('Город:', 'Сайт:', 'Губернатор:', 'Промо:')
-        reply = '\n'.join(f'{k} {v}' for k, v in zip(header, row))
-        _send_yes_only_keyboard(message, reply, 'Еще разок?')
+        quote, meta, link = row[:3]
+
+        message_text = f"{quote}\n*{meta}*\n{link}"
+        if len(row) > 3:
+            message_text += f"\n\nПромокод: {row[3]}"
+
+        _send_yes_only_keyboard(update.message, message_text, 'Еще раз?',
+                                parse_mode='markdown')
     except:
-        fallback_callback_handler(bot, update)
-    return GET_FIRST_NUMBER
+        _send_yes_only_keyboard(update.message, 'Что-то пошло не так',
+                                'Еще раз?')
+    return WELCOME
 
 
 def fallback_handler(bot, update):
-    """ Fallback handler if user trying to do something funny
-    """
-    replies = ("Мы можем реагировать на действия пользователя вне нашего процесса скидывая его на начало", )
-    _send_replies_batch(update.message, replies)
-    return start_handler(bot, update)
+    if hasattr(update, 'callback_query'):
+        message = update.callback_query.message
+    else:
+        message = message
+    error_text = 'Упс! Что-то пошло не так. Давай попробуем с начала.'
+    _send_replies_batch(message, (error_text, ))
+    return welcome_handler(bot, update)
 
 
-def fallback_callback_handler(bot, update):
-    """ Fallback handler if user trying to do something funny
-    """
-    reply = "Прости друг, что-то пошло не так. Давай попробуем сначала..."
-    _update_callback_message(message, bot, reply)
-    return preroll_handler(bot, update)
-
-
-def error(bot, update, error):
+def error_handler(bot, update, error):
     """ Log Errors caused by Updates.
     """
-    logger.exception('Update "%s" caused error "%s"', update, error)
+    logging.exception('Update "%s" caused error "%s"',
+                      update, error)
+
+
+# def preroll_handler(bot, update):
+#     """ Step one: Ask user nicely to begin
+#     """
+#     message = update.callback_query.message
+#     _update_callback_message(message, bot, "")
+#     _send_yes_only_keyboard(message, 'Готов выбрать губернатора?', 'Да!')
+#     return GET_FIRST_NUMBER
+
 

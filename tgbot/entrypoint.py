@@ -32,6 +32,11 @@ def cli(ctx, redis, redis_db):
     ctx.obj['runtime'] = RuntimeConfig(ctx.obj['redis'], 'runtime_config')
     ctx.call_on_close(ctx.obj['runtime'].save)
 
+    level_delta = -2
+    logformat = '%(asctime)s [%(levelname)s](%(module)s:%(lineno)d)%(message)s'
+    logging.basicConfig(format=logformat,
+                        level=logging.INFO + level_delta * 10)
+
 
 @cli.command(help='Validate config')
 @click.option('--print-config', '-p', is_flag=True,
@@ -40,34 +45,37 @@ def cli(ctx, redis, redis_db):
 def config(ctx, print_config):
     # Check valuable keys from runtime config
     def _echo_ok(message, condition, warning_message):
-        click.echo(f'-- {message:<25} ... ', nl=False )
+        click.echo(f'-- {message:<25} ... ', nl=False)
         if condition:
             success('OK!')
         else:
             warning(f'Missing! {warning_message}')
 
     click.echo('Runtime config sanity check:')
+
     oauth_ok = 'oauth' in ctx.obj['runtime']
     _echo_ok('Google OAuth2 Token', oauth_ok, 'Google API is unavialiable.')
+
     spreadsheet_ok = 'sheet-id' in ctx.obj['runtime']
-    _echo_ok('Google Spreadsheet ID', spreadsheet_ok, 'Background updates are unavailiable.')
+    _echo_ok('Google Spreadsheet ID', spreadsheet_ok,
+             'Background updates are unavailiable.')
+
     admin_token_ok = 'admin_token' in ctx.obj['runtime']
-    _echo_ok('Admin token', admin_token_ok, 'Managment commands are unaviliable.')
+    _echo_ok('Admin token', admin_token_ok,
+             'Managment commands are unaviliable.')
 
     if print_config:
-        click.echo(f'Runtime config dump:\n{pprint.pformat(ctx.obj["runtime"])}')
+        click.echo(f'Runtime config dump:\n'
+                   '{pprint.pformat(ctx.obj["runtime"])}')
 
 
 @cli.command(help="Run Telegram bot")
 @click.option('--token', '-t', prompt='TG API Token',
-              help='API Token for telegram bot. See https://core.telegram.org/bots')
+              help='API Token for telegram bot.'
+              'See https://core.telegram.org/bots')
 @click.pass_context
 def run(ctx, token):
     ctx.invoke(config)
-
-    level_delta = -2
-    logformat = '%(asctime)s [%(levelname)s](%(module)s:%(lineno)d)\n\t%(message)s'
-    logging.basicConfig(format=logformat, level=logging.INFO + level_delta * 10)
 
     main_loop(token, ctx.obj['redis'])
 
@@ -89,7 +97,8 @@ def token(ctx, new):
             ctx.exit()
     if new:
         ctx.obj['runtime']['admin_token'] = uuid.uuid4().hex
-        success(f'Created new admin token: {ctx.obj["runtime"]["admin_token"]}')
+        success(f'Created new admin token: '
+                '{ctx.obj["runtime"]["admin_token"]}')
         ctx.obj['redis'].set('runtime_config', json.dumps(ctx.obj['runtime']))
     else:
         success(f'Current admin token: {ctx.obj["runtime"]["admin_token"]}')
@@ -111,7 +120,8 @@ def oauth(ctx, secret_file):
     if session_dump is None:
         ctx.fail('Failed to authorize user')
 
-    whoami = _google_api_request(session, 'https://www.googleapis.com/oauth2/v1/userinfo')
+    whoami = _google_api_request(
+        session, 'https://www.googleapis.com/oauth2/v1/userinfo')
     click.echo(f'Authorized as {whoami["name"]} ({whoami["id"]})')
 
     ctx.obj['runtime']['oauth'] = session_dump
