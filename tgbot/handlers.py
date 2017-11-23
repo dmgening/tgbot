@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+from time import time
+from datetime import timedelta
+
 import logging
 import json
 from random import randint
@@ -11,7 +14,11 @@ from .helpers import (_send_replies_batch, _send_yes_only_keyboard,
 # States & const
 #
 WELCOME, PAGE_CHOISE, LINE_CHOISE, SEND_BOOK_QUOTE = range(4)
+SECONDS_IN_DAY = timedelta(days=1).total_seconds()
 
+#
+# Small helpers
+#
 
 def _validate_int(value, min_val, max_val):
     try:
@@ -39,12 +46,22 @@ def start_handler(bot, update):
     return WELCOME
 
 
-def welcome_handler(bot, update):
+def welcome_handler(bot, update, user_data):
     if hasattr(update, 'callback_query'):
         message = update.callback_query.message
         _update_callback_message(message, bot, "")
     else:
         message = update.message
+
+    user_data["attempts"] = [
+        attempt_time for attempt_time in user_data.get('attempts', [])
+        if time() - SECONDS_IN_DAY < attempt_time
+    ]
+
+    if len(user_data["attempts"]) > 4:
+        message_text = "Кажется, на сегодня магия закончилась. Приходите завтра"
+        _send_yes_only_keyboard(message, message_text, "А теперь можно?")
+        return WELCOME
 
     message_text = ("Бомборобот гадает по неопределенному множеству книг.\n"
                     "Выберите страницу:")
@@ -73,40 +90,42 @@ def line_choise_invalid(bot, update):
     return LINE_CHOISE
 
 
-def line_choise(bot, update):
+def line_choise(bot, update, user_data):
     if not _validate_int(update.message.text, 0, 200):
         return line_choise_invalid(bot, update)
-    return send_book_quote(bot, update)
 
-
-def send_book_quote(bot, update):
-    """ Step four: send reply from cached google table, and go to the beginig
-    """
     try:
         max_id = bot.redis.hlen('sheet') - 1
         row = json.loads(bot.redis.hget('sheet', randint(0, max_id)))
         quote, meta, link = row[:3]
 
-        message_text = f"{quote}\n*{meta}*\n{link}"
+        message_text = f"{quote}\n**{meta}**\n{link}"
+
         if len(row) > 3:
             message_text += f"\n\nПромокод: {row[3]}"
 
-        _send_yes_only_keyboard(update.message, message_text, 'Еще раз?',
+        button_text = "Вау! А еще можешь?"
+        _send_yes_only_keyboard(update.message, message_text, button_text,
                                 parse_mode='markdown')
+
+        if "attempts" not in user_data:
+            user_data["attempts"] = []
+        user_data["attempts"].append(time())
+
     except:
-        _send_yes_only_keyboard(update.message, 'Что-то пошло не так',
-                                'Еще раз?')
+        error_text = 'Упс! Что-то пошло не так. Давай попробуем с начала.'
+        _send_yes_only_keyboard(update.message, error_text, 'Давай')
     return WELCOME
 
 
-def fallback_handler(bot, update):
+def fallback_handler(bot, update, user_data):
     if hasattr(update, 'callback_query'):
         message = update.callback_query.message
     else:
         message = message
     error_text = 'Упс! Что-то пошло не так. Давай попробуем с начала.'
     _send_replies_batch(message, (error_text, ))
-    return welcome_handler(bot, update)
+    return welcome_handler(bot, update, user_data)
 
 
 def error_handler(bot, update, error):

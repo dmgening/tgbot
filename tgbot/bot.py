@@ -11,7 +11,6 @@ from telegram.ext import (messagequeue, Updater, Filters, ConversationHandler,
 from .handlers import (start_handler, welcome_handler, WELCOME,
                        page_choise, page_choise_invalid, PAGE_CHOISE,
                        line_choise, line_choise_invalid, LINE_CHOISE,
-                       send_book_quote, SEND_BOOK_QUOTE,
                        error_handler, fallback_handler)
 
 
@@ -52,11 +51,15 @@ def main_loop(token, redis):
                       MessageHandler(Filters.all, fallback_handler),
                       CallbackQueryHandler(fallback_handler)],
         states={
-            WELCOME: [CallbackQueryHandler(welcome_handler)],
+            WELCOME: [CallbackQueryHandler(welcome_handler,
+                                           pass_user_data=True)],
+
             PAGE_CHOISE: [RegexHandler('^\d{1,4}$', page_choise),
                           MessageHandler(Filters.text, page_choise_invalid)],
-            LINE_CHOISE: [RegexHandler('^\d{1,3}$', line_choise),
-                          MessageHandler(Filters.text, page_choise_invalid)],
+
+            LINE_CHOISE: [RegexHandler('^\d{1,3}$', line_choise,
+                                       pass_user_data=True),
+                          MessageHandler(Filters.text, line_choise_invalid)],
         },
         fallbacks=[CallbackQueryHandler(fallback_handler),
                    MessageHandler(Filters.text, fallback_handler),
