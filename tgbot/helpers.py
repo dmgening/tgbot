@@ -1,11 +1,56 @@
 #!/usr/bin/env python
 import logging
 import json
+import hashlib
+
+from datetime import timedelta
+
 from random import shuffle, randint
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from .observer import Observer
+
 NUMBERS_IN_KEYBOARD = 9
 NUMBERS_IN_ROW = 3
+SECONDS_IN_DAY = timedelta(days=1).total_seconds()
+
+
+class RedisMirroredMapping(object):
+
+    def __init__(self, redis, key_prefix, ttl=SECONDS_IN_DAY,
+                 dump=json.dumps, load=json.loads, factory=dict):
+
+        self._redis = redis
+        self._key_prefix = key_prefix
+        self._ttl = ttl
+
+        self._dump = dump
+        self._load = load
+        self._factory = factory
+
+    def _format_key(self, key):
+        return (f'{self.key_prefix}:'
+                '{haslib.md5(self.serializer(key)).hexdigset()}')
+
+    def _create_save_callback(self, key):
+        """ Creates callback for observer to save value to redis on changes
+        """
+        def _callback(observer, instance, value):
+            logging.debug(f'Observed change event on {key}')
+            self[key] = value
+
+    def __getitem__(self, key):
+        try:
+            logging.debug(f'Trying to load {key} from redis')
+            item = self.load(self.redis.get(self._format_key(key)))
+        except:
+            logging.debug(f'Falling back to factory for {key}')
+            item = self.factory()
+        return Observer(item, self._save_callback(key))
+
+    def __setitem__(self, key, value):
+        logging.debug(f'Saving {key} to redis')
+        self.redis.setex(self._format_key(key), self.dump(value), self.ttl)
 
 
 #

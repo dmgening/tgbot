@@ -13,6 +13,7 @@ from .handlers import (start_handler, welcome_handler, WELCOME,
                        line_choise, line_choise_invalid, LINE_CHOISE,
                        error_handler, fallback_handler)
 
+from .helpers import RedisMirroredMapping
 
 # Enable logging
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ def main_loop(token, redis):
 
     msg_queue = messagequeue.MessageQueue()
     updater = Updater(bot=TGBot(token, redis=redis, msg_queue=msg_queue))
+
+    # updater.dispatecher.user_data = RedisMirroredMapping(redis, 'user_data')
 
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start_handler),
